@@ -20,6 +20,37 @@ from utils.data_loader import get_example_wardrobe, get_empty_wardrobe
 
 # ── query handler ─────────────────────────────────────────────────────────────
 
+def _format_listing(item: dict) -> str:
+    """Format the selected listing for the Gradio output panel."""
+    if not item:
+        return "No listing was selected."
+
+    price = item.get("price")
+    if isinstance(price, (int, float)):
+        price_text = f"${price:.2f}"
+    else:
+        price_text = "Unknown"
+
+    style_tags = ", ".join(item.get("style_tags", [])) or "None"
+    colors = ", ".join(item.get("colors", [])) or "Unknown"
+    brand = item.get("brand") or "Unknown"
+
+    return f"""
+        {item.get("title", "Untitled listing")}
+
+        Price: {price_text}
+        Platform: {item.get("platform", "Unknown")}
+        Size: {item.get("size", "Unknown")}
+        Condition: {item.get("condition", "Unknown")}
+        Category: {item.get("category", "Unknown")}
+        Brand: {brand}
+        Colors: {colors}
+        Style: {style_tags}
+
+        Description:
+        {item.get("description", "No description provided.")}
+    """.strip()
+
 def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str]:
     """
     Called by Gradio when the user submits a query.
@@ -43,8 +74,56 @@ def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str]:
            string and return it along with session["outfit_suggestion"] and
            session["fit_card"].
     """
-    # TODO: implement this function
-    return "Agent not yet implemented.", "", ""
+    # Step 1: Guard against an empty query
+    if not user_query or not user_query.strip():
+        return (
+            "Please enter a search query, such as 'vintage graphic tee under $30'.",
+            "",
+            "",
+        )
+
+    # Step 2: Select wardrobe
+    if wardrobe_choice == "Empty wardrobe (new user)":
+        wardrobe = get_empty_wardrobe()
+    else:
+        wardrobe = get_example_wardrobe()
+
+    # Step 3: Call run_agent()
+    try:
+        session = run_agent(
+            query=user_query.strip(),
+            wardrobe=wardrobe,
+        )
+    except Exception as e:
+        return (
+            f"Something went wrong while running the agent: {e}",
+            "",
+            "",
+        )
+
+    # Step 4: If session["error"] is set, show it in the first panel
+    if session.get("error"):
+        return (
+            session["error"],
+            "",
+            "",
+        )
+
+    # Step 5: Format selected listing and return all outputs
+    selected_item = session.get("selected_item")
+
+    if not selected_item:
+        return (
+            "The agent completed without an error, but no listing was selected.",
+            "",
+            "",
+        )
+
+    listing_text = _format_listing(selected_item)
+    outfit_suggestion = session.get("outfit_suggestion") or ""
+    fit_card = session.get("fit_card") or ""
+
+    return listing_text, outfit_suggestion, fit_card
 
 
 # ── interface ─────────────────────────────────────────────────────────────────
